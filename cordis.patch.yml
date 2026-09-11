@@ -1,5 +1,5 @@
-# dsh-dual-peak bundle patch：插入雙供應商峰谷對照插件行。
-# 安裝：`dsh plugin --profile web add github:valkytie/dsh-dual-peak`。
+# dsh-ollama-tools bundle patch：插入 Ollama 工具包插件行。
+# 安裝：`dsh plugin --profile web add github:valkytie/dsh-ollama-tools`。
 - insert:
-    - id: dsh-dual-peak
-      name: 'dsh-dual-peak'
+    - id: dsh-ollama-tools
+      name: 'dsh-ollama-tools'

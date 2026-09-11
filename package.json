@@ -1,7 +1,7 @@
 {
-  "name": "dsh-dual-peak",
+  "name": "dsh-ollama-tools",
   "version": "1.0.0",
-  "description": "雙供應商峰谷對照（DSH 插件）：同時顯示 DeepSeek 官方 API 與 Ollama Cloud 的尖峰/離峰狀態，並建議當前最便宜的供應商",
+  "description": "Ollama 工具包（DSH 插件）：雙供應商峰谷對照 + Ollama 餘額/用量查詢 + 切到 Ollama 模型時自動提醒輸出精簡到 64K 以內",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -28,8 +28,10 @@
     "dsh",
     "cordis",
     "plugin",
+    "ollama",
     "peak-valley",
-    "ollama-cloud",
+    "balance",
+    "usage",
     "pricing",
     "time-of-use"
   ]
