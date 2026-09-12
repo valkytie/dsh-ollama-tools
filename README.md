@@ -23,12 +23,16 @@ DeepSeek-V4 系列自 2026-08-16 起實施峰谷計價，兩家供應商的尖�
 - 點開顯示兩家狀態、倒數計時、建議供應商（倍率以官方公告為準，卡片不宣稱特定折扣）
 - 時區可設定（IANA 名稱，如 `Asia/Taipei`；留空＝本機時間），持久化到 DSH `settings.yaml`
 - 可拖曳移動
+- 卡片以**實測高度**夾在視窗內（跟隨膠囊位置、視窗縮放即時重算，不會被裁掉）
+- 用量區塊顯示資料時間與查詢間隔，配額類資料不需要即時
 
 ### 2. Ollama 餘額/用量查詢
 
 卡片內顯示 Ollama Cloud 本期用量百分比（Ollama 回報的真實值）。資料來自 `https://ollama.com/api/usage`，使用 `OLLAMA_API_KEY` 認證。
 
 金額需要你提供「每月額度」才能換算：**未填入額度時只顯示百分比，不會預設任何金額**（Ollama API 的 `activity.cost` 目前對訂閱帳號固定回 `0.00000`，所以無法直接取得實際花費）。
+
+配額變化慢，用量結果預設**快取 10 分鐘**：開卡片不會每次都打 API，卡片會顯示「資料時間」與目前間隔，按「重新整理」則強制重抓一次。
 
 ### 3. 輸出精簡提醒（真正條件式）
 
@@ -58,16 +62,19 @@ dsbal-dualpeak:
 
 峰谷時段為內建固定值（依 DeepSeek / Ollama 官方公告），不提供修改——若官方調整時段，更新插件即可。
 
-### Ollama 每月額度（選填）
+### Ollama 用量與額度（選填）
 
 在卡片「設定」填入，或直接編輯 `~/.dsh/settings.yaml`：
 
 ```yaml
 dsh-ollama-tools:
-  monthlyAllowance: 20   # 美元；留空或 0 = 只顯示百分比
+  monthlyAllowance: 20      # 美元；留空或 0 = 只顯示百分比
+  usageCacheMinutes: 10     # 用量快取分鐘數；0 = 每次都查（上限 1440）
 ```
 
-僅用於把百分比換算成金額（`已用 = 百分比 × 額度`）。百分比本身來自 Ollama，永遠是準的。
+`monthlyAllowance` 僅用於把百分比換算成金額（`已用 = 百分比 × 額度`）。百分比本身來自 Ollama，永遠是準的。
+
+`usageCacheMinutes` 控制打 Ollama `/api/usage` 的頻率：同一份結果在快取時間內重複使用；額度換算每次即時計算，所以改額度不必等快取過期。
 
 ### Ollama API Key
 
@@ -78,6 +85,10 @@ export OLLAMA_API_KEY=你的key
 ```
 
 解析順序是**繼承的環境變數 → `.credentials.yaml` → `.env`**：環境變數優先且為唯讀，若它已設定，Models 頁面會無法覆蓋（DSH 會回報 `supplied read-only by the launching environment`）。
+
+## 安全性
+
+自訂路由（`/dualpeak/api/*`、`/ollama/api/*`）掛在 raw webServer 上，會繞過 DSH 給 `/api` 的柵欄，因此插件自己補上同一道檢查：**Host/Origin 信任 + 瀏覽器 session cookie**。未登入、或來源不受信任的本機程式（curl、其他網頁等）一律收到 401／403，既讀不到用量也改不了設定。取不到 `connection` 服務（例如非 web 組合）時維持原行為，不阻擋。
 
 ## 卸載
 
