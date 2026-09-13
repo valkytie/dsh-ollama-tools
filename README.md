@@ -12,14 +12,16 @@ DeepSeek Harness (DSH) 插件：**Ollama 工具包**，整合三個 Ollama 相�
 
 左下角懸浮膠囊同時顯示 **DeepSeek 官方 API** 與 **Ollama Cloud** 兩邊的尖峰/離峰狀態，並直接建議「現在該用哪個供應商」。
 
-DeepSeek-V4 系列自 2026-08-16 起實施峰谷計價，兩家供應商的尖峰時段**剛好互補**（台灣時間）：
+兩家的峰谷時段以**官方定價頁的 UTC 定義**為準（2026-08 起）：
 
-| 供應商 | 尖峰時段（週一至五） | 離峰 |
-|---|---|---|
-| DeepSeek 官方 API | 09:00–12:00、14:00–18:00 | 其餘時間（週末全日） |
-| Ollama Cloud | 20:00–02:00(+1) | 其餘時間（週末全日） |
+| 供應商 | 官方（UTC，週一至五） | 台北時間 | 離峰 |
+|---|---|---|---|
+| DeepSeek 官方 API | 01:00–04:00、06:00–10:00 | 09:00–12:00、14:00–18:00（週一至五） | 其餘時間（台北週末全日） |
+| Ollama Cloud | 12:00–18:00 | 20:00–24:00（週一至五）＋ 00:00–02:00（週二至週六） | 其餘時間 |
 
 - 膠囊：`DS 峰 · OL 谷` 即時狀態，每 30 秒自動更新
+- **判定一律用 UTC**（官方就是以 UTC 定義），所以「顯示時區」設定不影響尖峰/離峰判斷；卡片會把下一個轉換時刻換算成設定時區顯示
+- Ollama 的窗在台北會跨午夜：**台北週六 00:00–02:00 仍是尖峰**（UTC 週五窗尾），反之**台北週一 00:00–02:00 是離峰**（UTC 週日）——這兩個邊界是舊版判錯的地方
 - 點開顯示兩家狀態、倒數計時、建議供應商（倍率以官方公告為準，卡片不宣稱特定折扣）
 - 時區可設定（IANA 名稱，如 `Asia/Taipei`；留空＝本機時間），持久化到 DSH `settings.yaml`
 - 可拖曳移動
@@ -45,6 +47,8 @@ DeepSeek-V4 系列自 2026-08-16 起實施峰谷計價，兩家供應商的尖�
 
 回歸測試：`npm test`（`node --test`），涵蓋切走／切回、pending 尚未送出、只剩 lastUsed、以及沒有 `sessionProjections` 服務時的退路。
 
+峰谷判定另有 `test/peak-valley.test.mjs`：驗官方 UTC 窗、台北跨午夜邊界（週一 00:00–02:00 離峰、週六 00:00–02:00 尖峰），並用 8 天 × 每 7 分鐘的不變式掃描確認「下一個轉換＝第一次狀態改變」。
+
 ## 安裝
 
 ```bash
@@ -55,7 +59,7 @@ dsh plugin --profile web add github:valkytie/dsh-ollama-tools
 
 ## 設定
 
-### 峰谷時區
+### 顯示時區
 
 在膠囊「設定」面板改時區，或直接編輯 `~/.dsh/settings.yaml`：
 
@@ -64,7 +68,14 @@ dsbal-dualpeak:
   timezone: Asia/Taipei   # 可選，留空 = 本機時間
 ```
 
-峰谷時段為內建固定值（依 DeepSeek / Ollama 官方公告），不提供修改——若官方調整時段，更新插件即可。
+這個設定**只影響卡片顯示**（下一個轉換的時刻、時區文字）。峰谷判定固定依官方 UTC 定義，不會因為改了顯示時區而變動。
+
+峰谷時段為內建固定值，來源：
+
+- [Ollama pricing](https://ollama.com/pricing)：*Peak pricing applies between 12:00 and 18:00 UTC, Monday to Friday.*（Peak pricing 只列 deepseek-v4.1-flash / v4-flash / v4-pro 等表列模型）
+- [DeepSeek Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing)：*Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday*（off-peak 為尖峰半價）；週末依官方 2026-08-23 公告，全天採離峰價
+
+官方若調整時段，更新插件即可。
 
 ### Ollama 用量與額度（選填）
 
