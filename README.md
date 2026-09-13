@@ -36,10 +36,14 @@ DeepSeek-V4 系列自 2026-08-16 起實施峰谷計價，兩家供應商的尖�
 
 ### 3. 輸出精簡提醒（真正條件式）
 
-當 agent 的 provider 是 `ollama` 時，系統提示會自動加入一段「輸出精簡」政策，提醒模型輸出上限是 65536（64K），要求精簡 reasoning 與工具輸出，避免被截斷。
+當「當前生效」的 provider 是 `ollama` 時，系統提示會自動加入一段「輸出精簡」政策，提醒模型輸出上限是 65536（64K），要求精簡 reasoning 與工具輸出，避免被截斷。
 
-- **只在 provider 為 ollama 時出現**：透過 system prompt section 的函式文字，依 `context.agent.options.provider` 判斷，非 ollama 時回傳空字串（空 section 自動丟棄）
+- **只在 provider 為 ollama 時出現**：透過 system prompt section 的函式文字即時判斷，非 ollama 時回傳空字串（空 section 自動丟棄）
+- **判斷來源不能是 `agent.options.provider`**：那是在 agent 建立時就凍結的值，之後在同一個 session 內切換模型（`model/selection`）或改預設模型都不會回寫它。harness 的切換機制是在 `system-prompt/assemble` 之後才覆寫 prompt 變數 `provider` / `model`，而 `dsh-system-prompt` 的 `assemble()` 是「先渲染 section 文字、最後才跑該 waterfall」——因此在 section 文字裡硬讀 `agent.options` 只會拿到切換前的舊值（實際症狀：從 ollama 切到官方 API 後，系統提示仍持續夾帶 64K 提醒）
+- 因此改為依序向 session controller 使用的同一批資料源要當前路由：`sessionProjections.modelSelection.pending` → 最近一次送出的 `requestHeader` → `modelSelection.lastUsed` → `agentDefaultModel.currentSelection()` → 最後才退回 `agent.options`
 - 不影響 DeepSeek 官方、qwen 等其他 provider
+
+回歸測試：`npm test`（`node --test`），涵蓋切走／切回、pending 尚未送出、只剩 lastUsed、以及沒有 `sessionProjections` 服務時的退路。
 
 ## 安裝
 
