@@ -36,6 +36,8 @@ DeepSeek Harness (DSH) 插件：**Ollama 工具包**，整合三個 Ollama 相�
 
 配額變化慢，用量結果預設**快取 10 分鐘**：開卡片不會每次都打 API，卡片會顯示「資料時間」與目前間隔，按「重新整理」則強制重抓一次。
 
+**重置時間**：Ollama 官方 API **沒有**提供計費週期 —— `/api/usage` 只有 `limits.monthly.usage`（`activity.period` 是滾動 4 週，不是訂閱週期），`/api/me` 只有方案名稱；那個精確的重置時間只存在登入後的設定頁 HTML（`data-time`），API key 讀不到。官方計費是「每月同一天重置（年繳亦同）」，因此在卡片「設定」填一次**用量重置時間**（例 `2026-10-02 11:34`），插件就會顯示「用量重置：10/02 11:34（13d 12h 後）」，之後每月自動推算；留空＝不顯示。
+
 ### 3. 輸出精簡提醒（真正條件式）
 
 當「當前生效」的 provider 是 `ollama` 時，系統提示會自動加入一段「輸出精簡」政策，提醒模型輸出上限是 65536（64K），要求精簡 reasoning 與工具輸出，避免被截斷。
@@ -48,6 +50,8 @@ DeepSeek Harness (DSH) 插件：**Ollama 工具包**，整合三個 Ollama 相�
 回歸測試：`npm test`（`node --test`），涵蓋切走／切回、pending 尚未送出、只剩 lastUsed、以及沒有 `sessionProjections` 服務時的退路。
 
 峰谷判定另有 `test/peak-valley.test.mjs`：驗官方 UTC 窗、台北跨午夜邊界（週一 00:00–02:00 離峰、週六 00:00–02:00 尖峰），並用 8 天 × 每 7 分鐘的不變式掃描確認「下一個轉換＝第一次狀態改變」。
+
+用量重置則有 `test/reset-anchor.test.mjs`：驗每月推算、月底夾住（1/31 → 2/28、閏年 2/29）、無法解析回 null、以及依時區換算的顯示文字。
 
 ## 安裝
 
@@ -90,6 +94,21 @@ dsh-ollama-tools:
 `monthlyAllowance` 僅用於把百分比換算成金額（`已用 = 百分比 × 額度`）。百分比本身來自 Ollama，永遠是準的。
 
 `usageCacheMinutes` 控制打 Ollama `/api/usage` 的頻率：同一份結果在快取時間內重複使用；額度換算每次即時計算，所以改額度不必等快取過期。
+
+### 用量重置時間（選填）
+
+官方 API 沒有提供重置時間，所以由你填一次。在卡片「設定」輸入，或直接編輯 `~/.dsh/settings.yaml`：
+
+```yaml
+dsbal-dualpeak:
+  timezone: Asia/Taipei
+  billingResetAt: '2026-10-02 11:34'   # 任何一次已知的重置時刻；留空＝不顯示
+```
+
+- 只要是**任何一次**已知的重置時刻即可（過去或未來都行），插件以「每月同一天同時刻」推算下一次。
+- 未帶時區的字串以**本機時間**解讀；也可寫完整 ISO，例如 `2026-10-02T11:34:00+08:00`。
+- 月底會自動夾住（1/31 → 2/28，閏年 → 2/29），不會溢位成 3/03。
+- 去哪看這個時間：登入 [ollama.com/settings](https://ollama.com/settings)，把滑鼠移到用量條下方的「Resets in …」上，tooltip 會顯示精確的重置日期時間。
 
 ### Ollama API Key
 
