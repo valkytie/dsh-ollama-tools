@@ -53,13 +53,59 @@ DeepSeek Harness (DSH) 插件：**Ollama 工具包**，整合三個 Ollama 相�
 
 用量重置則有 `test/reset-anchor.test.mjs`：驗每月推算、月底夾住（1/31 → 2/28、閏年 2/29）、無法解析回 null、以及依時區換算的顯示文字。
 
+settings 相容層則有 `test/settings-compat.test.mjs`：用假的 ctx 分別餵 0.1.5 legacy（`register`/`get`）、0.1.7 modern（`describe`/`update`、以 entry id 定址）與「兩者皆無」三種服務，驗證讀寫與優雅降級，並檢查 `Config` 的 volatile 欄位齊全。
+
+## 支援的 DSH 版本
+
+| DSH | settings API | 狀態 |
+|---|---|---|
+| `0.1.5`（`dsh web` / web profile） | `register` / `get` / `update` | ✅ 支援 |
+| `0.1.7+`（DSH 桌面版 / desktop profile） | `describe` / `update`（schema 驅動） | ✅ 支援 |
+
+DSH `0.1.7` 起 settings 服務移除了 `register` / `get` / `installSection`，改成「schema 驅動」：表單由**插件自己的 `Config`** 產生，只列出標了 `.volatile()` 的欄位，並以 **profile entry id** 定址。
+
+本插件在 `apply()` 時做**執行期能力偵測**，兩代都自動走對的路徑，使用者不需要設定任何東西：
+
+- 有 `register` + `get` → 走 legacy 路徑（維持原有行為）
+- 有 `describe` + `update` → 走 modern 路徑（0.1.7）
+- 兩者皆無 → 印出警告並停用設定功能；讀取仍回預設值，但**寫入會明確回報失敗**，不會靜默假成功
+
+除錯時可用環境變數強制指定：`OLLAMA_TOOLS_SETTINGS_API=legacy|modern`。
+
+> 注意：`0.1.7` 的路徑需要 `@deepseek-ai/schemastery >= 3.18.4` 才有 `.volatile()`；
+> 較舊版本（含 npm 上的 `schemastery@3.18.0`）沒有這個方法。插件會逐層嘗試，
+> 最後退回等價的手工 schema（形狀相同、同樣標記 `volatile`），確保表單仍會出現。
+
 ## 安裝
+
+### Web 版（`dsh web`）
 
 ```bash
 dsh plugin --profile web add github:valkytie/dsh-ollama-tools
 ```
 
-安裝後**重啟 DeepSeek Harness**（`dsh web`）生效。
+### DSH 桌面版
+
+桌面版使用獨立的 `desktop` profile，且其 runtime 內附在應用程式裡，因此要用桌面版**內建的 pnpm** 安裝：
+
+```powershell
+# 1) 用桌面版內建的 pnpm 安裝（Electron 以 Node 模式執行）
+$env:DSH_DESKTOP_NODE_EXECUTABLE = "D:\dsh desktop\DeepSeek Harness.exe"
+$node = "D:\dsh desktop\DeepSeek Harness.exe"
+$pnpm = "D:\dsh desktop\resources\runtime\pnpm\bin\pnpm.mjs"
+$profile = "$env:USERPROFILE\.dsh\profiles\desktop"
+
+& $node $pnpm add --dir $profile github:valkytie/dsh-ollama-tools
+
+# 2) 把套件註冊成 profile bundle（pnpm 只裝相依，不會自動加進 bundles）
+#    編輯 $profile\package.json，在 dsh.profile.bundles 陣列加入：
+#      "dsh-ollama-tools"
+```
+
+安裝後**完全退出並重開 DeepSeek Harness**（不是只關視窗）才會生效。
+
+> 桌面版有自我保護：若第三方外掛導致啟動失敗，它會自動備份 `cordis.patch.yml`
+> 並以乾淨設定啟動。手動還原只需把備份檔改名回去。
 
 ## 設定
 
