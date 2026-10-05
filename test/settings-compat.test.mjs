@@ -23,15 +23,23 @@ const plugin = await import(pathToFileURL(join(here, '..', 'lib', 'index.js')).h
 
 const ENTRY_ID = 'dsh-ollama-tools'
 
-/** 最小可用的假 ctx：只提供外掛真正用到的 webServer.register 與 settings。 */
+/** 最小可用的假 ctx：只提供外掛真正用到的 webServer.register 與 settings。
+ *
+ * 重要：外掛是透過 ctx.get('webServer') / ctx.get('settings') 取服務，不是用
+ * ctx.webServer 屬性存取器 —— Cordis 的屬性存取器在服務未就緒時是 undefined，
+ * 讀它會炸出 "settings.get is not a function"。這裡兩條路都提供，確保兩種寫法
+ * 都能被測到；get() 必須回真服務，否則等於測不到真實路徑。
+ */
 function makeCtx(settingsService) {
   const routes = new Map()
+  const webServer = { register: ({ path, handler }) => routes.set(path, handler) }
+  const services = { settings: settingsService, webServer }
   const ctx = {
     settings: settingsService,
-    webServer: { register: ({ path, handler }) => routes.set(path, handler) },
+    webServer,
     logger: { warn: () => {}, error: () => {} },
     inject: () => {},
-    get: () => undefined,
+    get: (name) => services[name],
     effect: () => {},
   }
   return { ctx, routes }
@@ -119,6 +127,33 @@ test('0.1.7 modern：以 entry id 定址，可讀取並寫回', async () => {
 
   const back = await callRoute(routes, '/dualpeak/api/setConfig', { timezone: 'UTC' })
   assert.equal(back.config.timezone, 'UTC')
+})
+
+test('ctx.settings 屬性存取器是 undefined 時仍可運作（真實 DSH 的 Cordis 行為）', async () => {
+  // 回歸：外掛曾用 `const settings = ctx.settings` 取服務，但 Cordis 的 ctx.<service>
+  // 是屬性存取器，服務未就緒時是 undefined，於是設定面板整個失效並顯示
+  // "settings.get is not a function"。服務只能透過 ctx.get(name) 取。
+  const service = legacyService()
+  const routes = new Map()
+  const webServer = { register: ({ path, handler }) => routes.set(path, handler) }
+  const ctx = {
+    // getter 模擬未就緒的存取器
+    get settings() { return undefined },
+    get webServer() { return undefined },
+    logger: { warn: () => {}, error: () => {} },
+    inject: () => {},
+    get: (name) => (name === 'settings' ? service : name === 'webServer' ? webServer : undefined),
+    effect: () => {},
+  }
+  plugin.apply(ctx)
+
+  const read = await callRoute(routes, '/dualpeak/api/getConfig')
+  assert.equal(read.ok, true)
+  assert.equal(read.config.timezone, 'Asia/Taipei', '必須真的讀到已註冊命名空間的值')
+
+  const write = await callRoute(routes, '/dualpeak/api/setConfig', { timezone: 'UTC' })
+  assert.equal(write.ok, true)
+  assert.equal(write.config.timezone, 'UTC')
 })
 
 test('兩代皆無時優雅降級：讀預設值，寫入明確失敗', async () => {

@@ -19,6 +19,10 @@ function harness({ withProjections = true, defaultProvider = 'deepseek-official'
   const sections = []
   const services = {
     agentDefaultModel: { currentSelection: () => ({ provider: defaultProvider }) },
+    // 外掛透過 ctx.get('webServer') / ctx.get('settings') 取服務，不是屬性存取器
+    // （Cordis 的 ctx.<service> 在服務未就緒時是 undefined）。
+    webServer: { register() {} },
+    settings: { register() {}, get: () => ({}), update: async () => {} },
   }
   if (withProjections) {
     services.sessionProjections = {
@@ -26,8 +30,6 @@ function harness({ withProjections = true, defaultProvider = 'deepseek-official'
     }
   }
   apply({
-    webServer: { register() {} },
-    settings: { register() {}, get: () => ({}), update: async () => {} },
     get: (name) => services[name],
     inject: (_deps, cb) => cb({
       systemPrompt: { section: (s) => sections.push(s), getSectionOrder: () => 0 },
