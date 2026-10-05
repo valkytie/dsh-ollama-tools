@@ -30,10 +30,10 @@ const ENTRY_ID = 'dsh-ollama-tools'
  * 讀它會炸出 "settings.get is not a function"。這裡兩條路都提供，確保兩種寫法
  * 都能被測到；get() 必須回真服務，否則等於測不到真實路徑。
  */
-function makeCtx(settingsService) {
+function makeCtx(settingsService, extra = {}) {
   const routes = new Map()
   const webServer = { register: ({ path, handler }) => routes.set(path, handler) }
-  const services = { settings: settingsService, webServer }
+  const services = { settings: settingsService, webServer, ...extra }
   const ctx = {
     settings: settingsService,
     webServer,
@@ -81,17 +81,26 @@ function legacyService() {
   }
 }
 
-/** 0.1.7 風格：以 profile entry id 定址，沒有 register/get。 */
-function modernService(entryId) {
+/** 0.2.0 風格（forms 世代）：settings 服務只剩 describe()，值住在 profile entry config，
+ *  寫入要走 configEditor.edit(entry, change)。這也是實際 DSH 0.2.0-rc.2 的形狀。 */
+function formsService(entryId) {
   const values = {
     timezone: 'Asia/Taipei', billingResetAt: '', x: -3, y: 0,
     monthlyAllowance: 20, usageCacheMinutes: 10,
   }
+  const entry = { options: { id: entryId } }
   return {
-    describe: () => [{ ns: entryId, value: { ...values }, schema: {}, revision: 1 }],
-    update(ns, patch) {
-      if (ns !== entryId) throw new Error(`No configurable plugin entry "${ns}"`)
-      Object.assign(values, patch)
+    settings: {
+      describe: () => [{ ns: entryId, value: { ...values }, schema: {}, revision: 1 }],
+      // 刻意的：0.2.0 的 settings 沒有公開 update，測試不該假設它有
+    },
+    configEditor: {
+      entries: () => [entry],
+      async edit(target, change) {
+        if (target !== entry) throw new Error('Configuration entry is no longer available')
+        const next = change({ ...values }, {})
+        Object.assign(values, next)
+      },
     },
   }
 }
@@ -113,20 +122,43 @@ test('0.1.5 legacy：可讀取既有設定並寫回', async () => {
   assert.equal(after.config.timezone, 'UTC')
 })
 
-test('0.1.7 modern：以 entry id 定址，可讀取並寫回', async () => {
-  const { ctx, routes } = makeCtx(modernService(ENTRY_ID))
+test('0.2.0 forms：settings 只有 describe()，寫入走 configEditor.edit(entry, change)', async () => {
+  const svc = formsService(ENTRY_ID)
+  const { ctx, routes } = makeCtx(svc.settings, { configEditor: svc.configEditor })
+  plugin.apply(ctx)
+
+  const read = await callRoute(routes, '/dualpeak/api/getConfig')
+  assert.equal(read.ok, true, '讀取必須成功（否則就是使用者看到的 settings.get is not a function）')
+  assert.equal(read.config.timezone, 'Asia/Taipei')
+  assert.equal(read.config.x, -3)
+  assert.equal(read.config.billingResetAt, '')
+
+  const write = await callRoute(routes, '/dualpeak/api/setConfig', { timezone: 'UTC', billingResetAt: '2026-10-02 11:34' })
+  assert.equal(write.ok, true, '寫入必須成功，不可因服務世代而停用')
+  assert.equal(write.config.timezone, 'UTC')
+  assert.equal(write.config.billingResetAt, '2026-10-02 11:34')
+
+  // 另一個命名空間（額度）寫入時，不可蓋掉已寫入的 timezone
+  const write2 = await callRoute(routes, '/ollama/api/setConfig', { monthlyAllowance: 55 })
+  assert.equal(write2.ok, true)
+  assert.equal(write2.config.monthlyAllowance, 55)
+  const back = await callRoute(routes, '/dualpeak/api/getConfig')
+  assert.equal(back.config.timezone, 'UTC', '寫入不同欄位時必須合併，不能覆蓋')
+  assert.equal(back.config.billingResetAt, '2026-10-02 11:34')
+})
+
+test('0.2.0 forms 但取不到 configEditor：讀取仍可用，寫入明確失敗', async () => {
+  const svc = formsService(ENTRY_ID)
+  const { ctx, routes } = makeCtx(svc.settings)
   plugin.apply(ctx)
 
   const read = await callRoute(routes, '/dualpeak/api/getConfig')
   assert.equal(read.ok, true)
   assert.equal(read.config.timezone, 'Asia/Taipei')
 
-  const write = await callRoute(routes, '/ollama/api/setConfig', { monthlyAllowance: 55 })
-  assert.equal(write.ok, true)
-  assert.equal(write.config.monthlyAllowance, 55)
-
-  const back = await callRoute(routes, '/dualpeak/api/setConfig', { timezone: 'UTC' })
-  assert.equal(back.config.timezone, 'UTC')
+  const write = await callRoute(routes, '/dualpeak/api/setConfig', { timezone: 'UTC' })
+  assert.equal(write.ok, false, '不可假成功')
+  assert.match(write.error, /configEditor/)
 })
 
 test('ctx.settings 屬性存取器是 undefined 時仍可運作（真實 DSH 的 Cordis 行為）', async () => {
