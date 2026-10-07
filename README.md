@@ -30,13 +30,26 @@ DeepSeek Harness (DSH) 插件：**Ollama 工具包**，整合三個 Ollama 相�
 
 ### 2. Ollama 餘額/用量查詢
 
-卡片內顯示 Ollama Cloud 本期用量百分比（Ollama 回報的真實值）。資料來自 `https://ollama.com/api/usage`，使用 `OLLAMA_API_KEY` 認證。
+卡片顯示 Ollama Cloud 的**本期實際花費金額**與請求數。資料來自 `https://ollama.com/api/usage`，使用 `OLLAMA_API_KEY` 認證。
 
-金額需要你提供「每月額度」才能換算：**未填入額度時只顯示百分比，不會預設任何金額**（Ollama API 的 `activity.cost` 目前對訂閱帳號固定回 `0.00000`，所以無法直接取得實際花費）。
+**API 格式於 2026-10 改版**（舊格式已下線）：
+
+| | 舊 | 新 |
+|---|---|---|
+| 頂層欄位 | `activity`, `limits` | `range`, `scope`, `granularity`, `from`, `until`, `totals`, `buckets` |
+| 用量 | `limits.monthly.usage`（0~1 比例） | `totals.usage_usd`（美元金額）＋ `buckets[]` 逐日明細 |
+| `range` 參數 | — | 只接受 `7d` / `30d` |
+
+新格式直接給金額，因此**不再需要「百分比 × 額度」換算**。插件抓 `range=30d`，再用你填的**用量重置時間**從 `buckets` 切出訂閱週期內的實際花費。
+
+金額涵蓋的區間會標示來源：
+
+- `periodScope: billing` — 已依重置錨點切出本期（精確）
+- `periodScope: range` — 未填重置時間，改用 API 最近 30 天合計（可能與本期不同）
 
 配額變化慢，用量結果預設**快取 10 分鐘**：開卡片不會每次都打 API，卡片會顯示「資料時間」與目前間隔，按「重新整理」則強制重抓一次。
 
-**重置時間**：Ollama 官方 API **沒有**提供計費週期 —— `/api/usage` 只有 `limits.monthly.usage`（`activity.period` 是滾動 4 週，不是訂閱週期），`/api/me` 只有方案名稱；那個精確的重置時間只存在登入後的設定頁 HTML（`data-time`），API key 讀不到。官方計費是「每月同一天重置（年繳亦同）」，因此在卡片「設定」填一次**用量重置時間**（例 `2026-10-02 11:34`），插件就會顯示「用量重置：10/02 11:34（13d 12h 後）」，之後每月自動推算；留空＝不顯示。
+**重置時間**：Ollama API 沒有提供計費週期（`/api/me` 只有方案名稱），那個精確時間只存在登入後的設定頁 HTML（`data-time`），API key 讀不到。官方計費是「每月同一天重置（年繳亦同）」，因此在卡片「設定」填一次**用量重置時間**（例 `2026-10-08 15:41`），插件就會顯示重置倒數，並用它切出本期金額；留空＝金額改用 30 天窗口。
 
 ### 3. 輸出精簡提醒（真正條件式）
 
